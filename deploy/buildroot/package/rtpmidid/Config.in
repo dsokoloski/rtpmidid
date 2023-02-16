@@ -10,6 +10,7 @@ config BR2_PACKAGE_RTPMIDID
 	select BR2_PACKAGE_ALSA_LIB_RAWMIDI
 	select BR2_PACKAGE_AVAHI
 	select BR2_PACKAGE_AVAHI_DAEMON
+	select BR2_PACKAGE_AVAHI_LIBAVAHI_CLIENT
 	select BR2_PACKAGE_FMT
 	help
           Real Time Protocol Musical Instrument Digital Interface Daemon

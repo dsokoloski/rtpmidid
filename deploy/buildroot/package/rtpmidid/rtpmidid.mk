@@ -4,9 +4,8 @@
 #
 ################################################################################
 
-RTPMIDID_VERSION = HEAD
-#RTPMIDID_VERSION = @GIT_LAST_COMMIT_HASH@
-RTPMIDID_SITE = https://github.com/davidmoreno/rtpmidid.git
+RTPMIDID_VERSION = buildroot
+RTPMIDID_SITE = git@github.com:dsokoloski/rtpmidid.git
 RTPMIDID_SITE_METHOD=git
 RTPMIDID_GIT_SUBMODULES = NO
 RTPMIDID_LICENSE = GPL-2.1, GPL-3

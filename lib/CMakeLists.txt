@@ -6,6 +6,10 @@ add_library(
   utils.cpp
 )
 
+install(TARGETS rtpmidid-shared
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+)
+
 add_library(
   rtpmidid-static
   STATIC
