@@ -12,7 +12,7 @@ RTPMIDID_LICENSE = GPL-2.1, GPL-3
 RTPMIDID_LICENSE_FILES = LICENCE.md
 RTPMIDID_CPE_ID_VENDOR = davidmoreno
 RTPMIDID_CPE_ID_PRODUCT = rtpmidid
-RTPMIDID_DEPENDENCIES = host-pkgconf host-automake host-autoconf host-libtool host-cmake zlib
+RTPMIDID_DEPENDENCIES = host-pkgconf host-cmake
 RTPMIDID_INSTALL_STAGING = YES
 
 define RTPMIDID_INSTALL_INIT_SYSTEMD
