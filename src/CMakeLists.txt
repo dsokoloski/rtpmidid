@@ -21,7 +21,7 @@ target_link_libraries(rtpmidid-daemon rtpmidid-static)
 
 set_target_properties(rtpmidid-daemon PROPERTIES OUTPUT_NAME rtpmidid)
 
-install(TARGETS rtpmidid
+install(TARGETS rtpmidi-daemon
   DESTINATION ${CMAKE_INSTALL_PREFIX}
 )
 
