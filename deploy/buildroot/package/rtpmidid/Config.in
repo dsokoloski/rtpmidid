@@ -2,6 +2,7 @@ config BR2_PACKAGE_RTPMIDID
 	bool "rtpmidid"
 	depends on BR2_USE_MMU
 	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_PACKAGE_SYSTEMD
 	select BR2_PACKAGE_LIBCURL
 	select BR2_PACKAGE_LIBPCAP
 	select BR2_PACKAGE_ZLIB
@@ -19,3 +20,6 @@ config BR2_PACKAGE_RTPMIDID
 
 comment "RTP Midi is a C++17 application, please enable C++ under Toolchain"
 	depends on !BR2_INSTALL_LIBSTDCPP
+
+comment "RTP Midi requires systemd for avahi-client support (DBus)"
+	depends on !BR2_PACKAGE_SYSTEMD

@@ -15,7 +15,7 @@ RTPMIDID_CPE_ID_PRODUCT = rtpmidid
 RTPMIDID_DEPENDENCIES = host-pkgconf host-automake host-autoconf host-libtool host-cmake zlib
 RTPMIDID_INSTALL_STAGING = YES
 
-define NETIFYD_INSTALL_INIT_SYSTEMD
+define RTPMIDID_INSTALL_INIT_SYSTEMD
 	$(INSTALL) -D -m 644 $(@D)/debian/rtpmidid.service \
 		$(TARGET_DIR)/usr/lib/systemd/system/rtpmidid.service
 endef
