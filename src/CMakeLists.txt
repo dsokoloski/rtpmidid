@@ -5,10 +5,6 @@ add_executable(
   control_socket.cpp
 )
 
-install(TARGETS rtpmidi-daemon
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
-)
-
 target_link_libraries(rtpmidid-daemon ${AVAHI_LIBRARIES})
 target_include_directories(rtpmidid-daemon PUBLIC ${AVAHI_INCLUDE_DIRS})
 target_compile_options(rtpmidid-daemon PUBLIC ${AVAHI_CFLAGS_OTHER})
@@ -24,3 +20,8 @@ target_compile_options(rtpmidid-daemon PUBLIC ${ALSA_CFLAGS_OTHER})
 target_link_libraries(rtpmidid-daemon rtpmidid-static)
 
 set_target_properties(rtpmidid-daemon PROPERTIES OUTPUT_NAME rtpmidid)
+
+install(TARGETS rtpmidid
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+)
+
