@@ -1,5 +1,11 @@
-build
-.*
-!.gitignore
-dump.*
 !.clang-format
+!.gitignore
+*.cmake
+.*
+/CMakeCache.txt
+/lib/Makefile
+/src/Makefile
+/tests/Makefile
+CMakeFiles
+build
+dump.*
