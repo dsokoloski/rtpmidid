@@ -7,7 +7,7 @@ add_library(
 )
 
 install(TARGETS rtpmidid-shared
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
 )
 
 add_library(
