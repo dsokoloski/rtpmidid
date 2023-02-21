@@ -12,15 +12,28 @@ description: |
 grade: devel
 confinement: devmode
 
+plugs:
+  alsa-conf:
+    interface: system-files
+    read:
+    - /etc/alsa/alsa.conf
+    - /usr/share/alsa/alsa.conf
+
 apps:
   rtpmidid:
-    command: bin/rtpmidid
+    command: usr/sbin/rtpmidid
     daemon: forking
     restart-condition: on-failure
+    plugs:
+      - alsa
+      - network
+      - network-bind
+      - avahi-control
+      - avahi-observe
 
 parts:
   rtpmidid:
-    source: @CMAKE_SOURCE_DIR@
+    source: https://github.com/dsokoloski/rtpmidid/archive/refs/tags/v23.02.tar.gz
     plugin: cmake
     cmake-parameters:
       - -DCMAKE_INSTALL_PREFIX=/usr
