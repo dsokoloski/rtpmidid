@@ -1,0 +1,33 @@
+name: rtpmidid
+base: core20
+version: '@RTPMIDID_VERSION@'
+summary: rtpmidid allows you to share ALSA sequencer devices on the network
+description: |
+  rtpmidid allows you to share ALSA sequencer devices on the network using
+  RTP MIDI, and import other network shared RTP MIDI devices.
+  rtpmidid is an user daemon, and when a RTP MIDI device is announced using
+  mDNS (also known as Zeroconf, Avahi, and multicast DNS) it exposes this ALSA
+  sequencer port.
+
+grade: devel
+confinement: devmode
+
+apps:
+  rtpmidid:
+    command: bin/rtpmidid
+    daemon: forking
+    restart-condition: on-failure
+
+parts:
+  rtpmidid:
+    source: @CMAKE_SOURCE_DIR@
+    plugin: cmake
+    cmake-parameters:
+      - -DCMAKE_INSTALL_PREFIX=/usr
+    build-packages:
+      - pkg-config
+      - libasound2-dev
+      - libavahi-client-dev
+    stage-packages:
+      - libasound2
+      - libavahi-client3

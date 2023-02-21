@@ -23,6 +23,8 @@ execute_process(
 add_definitions(-DRTPMIDID_VERSION=\"${RTPMIDID_VERSION}\")
 message(STATUS "Version ${RTPMIDID_VERSION}")
 
+configure_file(${CMAKE_SOURCE_DIR}/deploy/snap/local/snapcraft.yaml.in ${CMAKE_SOURCE_DIR}/deploy/snap/snapcraft.yaml)
+
 add_subdirectory(lib)
 add_subdirectory(src)
 add_subdirectory(tests)
