@@ -28,6 +28,7 @@ parts:
       - pkg-config
       - libasound2-dev
       - libavahi-client-dev
+      - libfmt-dev
     stage-packages:
       - libasound2
       - libavahi-client3
