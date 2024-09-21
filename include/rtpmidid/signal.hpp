@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -20,30 +20,165 @@
 #pragma once
 
 #include "logger.hpp"
+#include "utils.hpp"
+#include <assert.h>
+#include <cstdint>
 #include <functional>
 #include <map>
 
+// #define DEBUG0 DEBUG
+#define DEBUG0(...)
+
+namespace rtpmidid {
+
+template <typename... Args> class connection_t;
+
 template <typename... Args> class signal_t {
+  typedef std::map<int, std::function<void(Args...)>> VT;
+
 public:
-  int connect(std::function<void(Args...)> const &&f) {
-    auto cid = max_id++;
-    slots[cid] = std::move(f);
-    return cid;
+  using connection_t = ::rtpmidid::connection_t<Args...>;
+
+  signal_t() : slots_(std::make_shared<VT>()) {
+    DEBUG0("{}::signal_t()", (void *)this);
+  }
+  signal_t(signal_t<Args...> &&other) = delete;
+  signal_t &operator=(signal_t<Args...> &&other) = delete;
+  signal_t(const signal_t<Args...> &other) = delete;
+  signal_t &operator=(const signal_t<Args...> &other) = delete;
+
+  ~signal_t() {
+    DEBUG0("{}::~signal_t()", (void *)this);
+    disconnect_all();
+    DEBUG0("{}::~signal_t()~", (void *)this);
   }
 
-  void disconnect(int id) { slots.erase(id); }
+  // Must keep the connection, when deleted will be disconnected
+  [[nodiscard]] connection_t connect(std::function<void(Args...)> const &&f) {
+    auto cid = max_id++;
+    // Copy to next slots_ current slots_, as if in use will still be valid, and
+    // later will be replaced.
+    slots_ = std::make_shared<VT>(*slots_);
+    slots_->insert(std::make_pair(cid, std::move(f)));
+    DEBUG0("{}::signal_t::connect(f) -> {}", (void *)this, cid);
+    connections[cid] = nullptr;
+    return ::rtpmidid::connection_t(this, cid);
+  }
 
-  void disconnect_all() { slots.clear(); }
+  void disconnect(int id) {
+    DEBUG0("{}::signal_t::disconnect({})", (void *)this, id);
+    slots_ = std::make_shared<VT>(*slots_);
+    slots_->erase(id);
+    connections.erase(id);
+  }
 
+  void disconnect_all() {
+    while (connections.begin() != connections.end()) {
+      auto conn = connections.begin();
+      DEBUG0("{}::signal_t::disconnect_all() {}", (void *)this,
+             (void *)conn->second);
+      conn->second->disconnect();
+    }
+    DEBUG0("{}::signal_t::disconnect_all(), has {}", (void *)this,
+           slots_->size());
+    assert(slots_->size() == 0);
+    assert(connections.size() == 0);
+  }
+
+  /**
+   * @short Calls the callback
+   *
+   * It has to be carefull to call all callbacks that are at call moment, if
+   * they are still valid at call moment.
+   *
+   * This is as new callbacks can be added, or removed, and we should absolutely
+   * not call a not valid callback anymore.
+   */
   void operator()(Args... args) {
-    for (auto const &f : slots) {
-      f.second(std::forward<Args>(args)...);
+    auto slots_ = this->slots_;
+    DEBUG0("{}::signal_t::() {} slots_", (void *)this, slots_->size());
+    for (auto const &f : *slots_) {
+      if (this->slots_->find(f.first) == this->slots_->end())
+        continue; // this element was removed while looping, do not call
+      DEBUG0("{}::signal_t::() calling {}", (void *)this, f.first);
+      f.second(args...);
+      DEBUG0("{}::signal_t::() called {}", (void *)this, f.first);
+    }
+    DEBUG0("{}::signal_t::() END", (void *)this);
+  }
+
+  void replace_connection_ptr(int id, connection_t *ptr) {
+    DEBUG0("{}::replace_connection_ptr::({})", (void *)this, id);
+    for (auto &f : connections) {
+      DEBUG0("Got {}", f.first);
+      if (f.first == id) {
+        DEBUG0("{}::replace_connection_ptr::({} -> {})", (void *)this,
+               (void *)f.second, (void *)ptr);
+        f.second = ptr;
+      }
     }
   }
 
-  size_t count() { return slots.size(); }
+  size_t count() { return slots_->size(); }
 
 private:
-  uint32_t max_id = 0;
-  std::map<uint32_t, std::function<void(Args...)>> slots;
+  int max_id = 1;
+  std::shared_ptr<VT> slots_;
+
+  std::map<int, connection_t *> connections{};
 };
+
+template <typename... Args> class connection_t {
+  signal_t<Args...> *signal;
+  int id;
+
+public:
+  connection_t() : signal(nullptr), id(0) {
+    DEBUG0("{}::connection_t()", (void *)this);
+  }
+  connection_t(signal_t<Args...> *signal_, int id_) : signal(signal_), id(id_) {
+    DEBUG0("{}::connection_t({})", (void *)this, id_);
+    signal->replace_connection_ptr(id, this);
+  }
+  connection_t(connection_t<Args...> &other) = delete;
+  connection_t(connection_t<Args...> &&other) noexcept
+      : signal(other.signal), id(other.id) {
+    DEBUG0("{}::connection_t({})", (void *)this, (void *)&other);
+    if (signal)
+      signal->replace_connection_ptr(id, this);
+
+    other.signal = nullptr;
+    other.id = 0;
+  }
+
+  ~connection_t() {
+    DEBUG0("{}::~connection_t()", (void *)this);
+    disconnect();
+  }
+  connection_t(const connection_t<Args...> &) = delete;
+  connection_t<Args...> &operator=(const connection_t<Args...> &) = delete;
+  connection_t<Args...> &operator=(connection_t<Args...> &other) = delete;
+
+  connection_t &operator=(connection_t<Args...> &&other) noexcept {
+    DEBUG0("{}::=({})", (void *)this, (void *)&other);
+    disconnect();
+    signal = other.signal;
+    id = other.id;
+    signal->replace_connection_ptr(id, this);
+
+    other.signal = nullptr;
+    other.id = 0;
+
+    return *this;
+  }
+
+  void disconnect() {
+    DEBUG0("{}::disconnect()", (void *)this);
+    if (id && signal)
+      signal->disconnect(id);
+    signal = nullptr;
+    id = 0;
+  }
+#undef DEBUG0
+};
+} // namespace rtpmidid

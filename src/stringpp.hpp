@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,8 +19,6 @@
 #pragma once
 #include <algorithm>
 #include <sstream>
-#include <string>
-#include <string_view>
 #include <vector>
 
 // Some functions to allow to_stirng to almost everything
@@ -58,7 +56,7 @@ inline bool endswith(const std::string_view &str,
                     std::begin(maybe_end));
 }
 } // namespace std
-namespace rtpmidid {
+namespace rtpmididns {
 std::vector<std::string> split(const std::string &str, char delim = ' ');
 
 // https://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
@@ -99,4 +97,5 @@ static inline std::string trim_copy(std::string s) {
   trim(s);
   return s;
 }
-} // namespace rtpmidid
+
+} // namespace rtpmididns

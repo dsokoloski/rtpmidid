@@ -1,41 +1,63 @@
-PORT := 10000
+# Port for test run
+PORT:=10000
+# Number of jobs for make
+JOBS:=$(shell nproc)
+
+# To easy change to clang, set CXX.
+# ENABLE_PCH sound like a good idea, but for massive parallelist (my comp has 32 CPU threads), it
+# stalls the parallelist waiting to compile the Pre Compiled Headers.
+CMAKE_EXTRA_ARGS := -DCMAKE_CXX_COMPILER=${CXX} -DENABLE_PCH=OFF
+
 
 .PHONY: help
 help:
 	@echo "Makefile for rtpmidid"
 	@echo
-	@echo " build   -- Creates the build directory and builds the rtpmidid"
-	@echo " run     -- builds and runs the daemon"
-	@echo " setup   -- Creates the socket control file"
-	@echo " clean   -- Cleans project"
-	@echo " deb     -- Generate deb package"
-	@echo " test    -- Runs all test"
-	@echo " install -- Installs to PREFIX or DESTDIR (default /usr/local/)"
-	@echo " man     -- Generate man pages"
+	@echo " build     -- Creates the build directory and builds the rtpmidid"
+	@echo " build-dev -- Creates the build directory and builds the rtpmidid for debugging"
+	@echo " run       -- builds and runs the daemon"
+	@echo " setup     -- Creates the socket control file"
+	@echo " clean     -- Cleans project"
+	@echo " deb       -- Generate deb package"
+	@echo " test      -- Runs all test"
+	@echo " install   -- Installs to PREFIX or DESTDIR (default /usr/local/)"
+	@echo " man       -- Generate man pages"
 	@echo
-	@echo " gdb     -- Run inside gdb, to capture backtrace of failures (bt). Useful for bug reports."
-	@echo " capture -- Capture packets with tcpdump. Add this to bug reports."
+	@echo " run-gdb  -- Run inside gdb, to capture backtrace of failures (bt). Useful for bug reports."
+	@echo " run-valgrin -- Run inside valgrind, to capture backtrace of failures (bt). Useful for bug reports."
+	@echo " capture  -- Capture packets with tcpdump. Add this to bug reports."
+	@echo " statemachines -- Generate the files for the state machines"
 	@echo
 	@echo "Variables:"
-	@echo 
+	@echo
 	@echo " PORT=10000"
-	@echo 
+	@echo
 
 .PHONY: build
 build: build/bin/rtpmidid
 
 build/bin/rtpmidid: src/* tests/* CMakeLists.txt
 	mkdir -p build
-	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Release
-	cd build && make -j
+	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Release -GNinja $(CMAKE_EXTRA_ARGS)
+	cd build && ninja
 
-build-dev: 
+build-dev:
 	mkdir -p build
-	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Debug
-	cd build && make -j
+	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Debug $(CMAKE_EXTRA_ARGS)
+	cd build && make -j$(JOBS)
+
+build-deb:
+	mkdir -p build
+	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=OFF -GNinja $(CMAKE_EXTRA_ARGS) -DLDD=system
+	cd build && ninja
+
+build-make:
+	mkdir -p build
+	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Release -GMakefile $(CMAKE_EXTRA_ARGS)
+	cd build && make -j$(JOBS)
 
 
-man: 
+man:
 	mkdir -p build/man/
 	pandoc rtpmidid.1.md -s -t man -o build/man/rtpmidid.1
 	pandoc rtpmidid-cli.1.md -s -t man -o build/man/rtpmidid-cli.1
@@ -43,19 +65,23 @@ man:
 .PHONY: clean
 clean:
 	rm -rf build
+	rm -rf debian/rtpmidid
+	rm -rf debian/librtpmidid0
+	rm -rf debian/librtpmidid0-dev
 
 VALGRINDFLAGS := --leak-check=full --error-exitcode=1
-RTPMIDID_ARGS := --port ${PORT} --name devel
+RTPMIDID_ARGS := --ini default.ini --port ${PORT} --name devel --control /tmp/rtpmidid.sock
 
-.PHONY: run run-valgrind gdb
-run: build
+.PHONY: run run-valgrind run-gdb
+run: build-dev
 	build/src/rtpmidid $(RTPMIDID_ARGS)
 
-gdb: build-dev
+run-gdb: build-dev
 	gdb build/src/rtpmidid -ex=r --args build/src/rtpmidid  $(RTPMIDID_ARGS)
 
-run-valgrind: build
-	valgrind --leak-check=full --show-leak-kinds=all build/src/rtpmidid $(RTPMIDID_ARGS)
+run-valgrind: build-dev
+	valgrind --leak-check=full --show-leak-kinds=all --log-file=/tmp/rtpmidid.valgrind.log -- build/src/rtpmidid $(RTPMIDID_ARGS) || true
+	@echo "Logs at /tmp/rtpmidid.valgrind.log"
 
 PORT1 = $(shell echo | awk '{print ${PORT} + 1}')
 
@@ -76,14 +102,18 @@ setup:
 	sudo mkdir -p /var/run/rtpmidid
 	sudo chown $(shell whoami) /var/run/rtpmidid
 
-.PHONY: test test_mdns test_rtppeer test_rtpserver
-test: test_rtppeer test_rtpserver
+.PHONY: test build-test
+test: build-test
+	mkdir -p build
+	cd build &&	cmake .. -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON -G "Unix Makefiles" $(CMAKE_EXTRA_ARGS)
+	cd build/tests && make -j
+	cd build/tests && CTEST_OUTPUT_ON_FAILURE=1 make test
 
-test_rtppeer: build
-	valgrind $(VALGRINDFLAGS) build/tests/test_rtppeer
-
-test_rtpserver: build
-	valgrind $(VALGRINDFLAGS) build/tests/test_rtpserver
+statemachines:
+	scripts/statemachine_to_cpp.py \
+		lib/STATEMACHINES.md \
+		--header include/rtpmidid/ \
+		--source lib/
 
 .PHONY: deb
 deb:
@@ -95,40 +125,41 @@ ifneq ($(DESTDIR),)
     PREFIX := $(DESTDIR)
 endif
 ifeq ($(PREFIX),)
-    PREFIX := /usr/local/
+    PREFIX := /usr/local
 endif
 .PHONY: install
 
 install: install-rtpmidid install-librtpmidid0 install-librtpmidid0-dev
 
 install-rtpmidid: build man
-	mkdir -p $(PREFIX)/usr/bin/ 
-	cp build/src/rtpmidid $(PREFIX)/usr/bin/
-	cp cli/rtpmidid-cli.py $(PREFIX)/usr/bin/rtpmidid-cli
+	mkdir -p $(PREFIX)/bin/
+	cp build/src/rtpmidid $(PREFIX)/bin/
+	cd cli && make compile
+	cp build/rtpmidid-cli $(PREFIX)/bin/rtpmidid-cli
 	mkdir -p $(PREFIX)/etc/systemd/system/
 	cp debian/rtpmidid.service $(PREFIX)/etc/systemd/system/
-	mkdir -p $(PREFIX)/usr/share/doc/rtpmidid/
-	cp README.md $(PREFIX)/usr/share/doc/rtpmidid/
-	cp LICENSE-daemon.txt $(PREFIX)/usr/share/doc/rtpmidid/LICENSE.txt
-	mkdir -p $(PREFIX)/usr/share/man/man1/
-	cp build/man/rtpmidid.1 $(PREFIX)/usr/share/man/man1/
-	cp build/man/rtpmidid-cli.1 $(PREFIX)/usr/share/man/man1/
+	mkdir -p $(PREFIX)/etc/rtpmidid/
+	cp default.ini $(PREFIX)/etc/rtpmidid/
+	mkdir -p $(PREFIX)/share/doc/rtpmidid/
+	cp README.md $(PREFIX)/share/doc/rtpmidid/
+	cp LICENSE-daemon.txt $(PREFIX)/share/doc/rtpmidid/LICENSE.txt
+	mkdir -p $(PREFIX)/share/man/man1/
+	cp build/man/rtpmidid.1 $(PREFIX)/share/man/man1/
+	cp build/man/rtpmidid-cli.1 $(PREFIX)/share/man/man1/
 
 install-librtpmidid0: build
-	mkdir -p $(PREFIX)/usr/lib/ 
-	cp -a build/lib/lib*so* $(PREFIX)/usr/lib/
-	mkdir -p $(PREFIX)/usr/share/doc/librtpmidid0/
-	cp README.md $(PREFIX)/usr/share/doc/librtpmidid0/
-	cp README.librtpmidid.md $(PREFIX)/usr/share/doc/librtpmidid0/
-	cp LICENSE-lib.txt $(PREFIX)/usr/share/doc/librtpmidid0/LICENSE.txt
+	mkdir -p $(PREFIX)/lib/
+	cp -a build/lib/lib*so* $(PREFIX)/lib/
+	mkdir -p $(PREFIX)/share/doc/librtpmidid0/
+	cp README.md $(PREFIX)/share/doc/librtpmidid0/
+	cp README.librtpmidid.md $(PREFIX)/share/doc/librtpmidid0/
+	cp LICENSE-lib.txt $(PREFIX)/share/doc/librtpmidid0/LICENSE.txt
 
 install-librtpmidid0-dev: build
-	mkdir -p $(PREFIX)/usr/lib/ $(PREFIX)/usr/include/
-	cp -a build/lib/lib*.a $(PREFIX)/usr/lib/
-	cp -a include/rtpmidid $(PREFIX)/usr/include/
-	mkdir -p $(PREFIX)/usr/share/doc/librtpmidid0-dev/
-	cp README.md $(PREFIX)/usr/share/doc/librtpmidid0-dev/
-	cp README.librtpmidid.md $(PREFIX)/usr/share/doc/librtpmidid0-dev/
-	cp LICENSE-lib.txt $(PREFIX)/usr/share/doc/librtpmidid0-dev/LICENSE.txt
-
-
+	mkdir -p $(PREFIX)/lib/ $(PREFIX)/include/
+	cp -a build/lib/lib*.a $(PREFIX)/lib/
+	cp -a include/rtpmidid $(PREFIX)/include/
+	mkdir -p $(PREFIX)/share/doc/librtpmidid0-dev/
+	cp README.md $(PREFIX)/share/doc/librtpmidid0-dev/
+	cp README.librtpmidid.md $(PREFIX)/share/doc/librtpmidid0-dev/
+	cp LICENSE-lib.txt $(PREFIX)/share/doc/librtpmidid0-dev/LICENSE.txt

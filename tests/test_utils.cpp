@@ -1,7 +1,6 @@
-
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,9 +18,11 @@
 
 #include "./test_utils.hpp"
 #include "./test_case.hpp"
+#include "rtpmidid/exceptions.hpp"
 #include "rtpmidid/iobytes.hpp"
 #include "rtpmidid/poller.hpp"
 #include <arpa/inet.h>
+#include <chrono>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -149,4 +150,48 @@ void test_client_t::recv(rtpmidid::io_bytes_reader &&msg) {
   auto len = ::recv(sockfd, msg.start, msg.size(), 0);
   msg.end = msg.start + len;
   msg.position = msg.start;
+}
+
+void poller_wait_for(std::chrono::milliseconds ms) {
+  using namespace std::chrono_literals;
+  using milliseconds = std::chrono::milliseconds;
+
+  auto pending = ms;
+  auto start = std::chrono::system_clock::now();
+  while (pending > 0s) {
+    DEBUG("WAIT {}ms", pending.count());
+    rtpmidid::poller.wait(pending);
+    auto now = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<milliseconds>(now - start);
+    start = now;
+    pending -= elapsed;
+  };
+}
+
+void poller_wait_until(const std::function<bool(void)> &f,
+                       std::chrono::milliseconds ms) {
+  using namespace std::chrono_literals;
+  using milliseconds = std::chrono::milliseconds;
+
+  auto pending = ms;
+  auto start = std::chrono::system_clock::now();
+  auto start0 = start;
+  bool fret = f();
+  std::chrono::milliseconds one_ms(1);
+
+  while (pending > 0s && !fret) {
+    DEBUG("WAIT {}ms or F", pending.count());
+    rtpmidid::poller.wait(std::max(pending / 4, one_ms));
+    auto now = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<milliseconds>(now - start);
+    start = now;
+    pending -= elapsed;
+    fret = f();
+  };
+  auto now = std::chrono::system_clock::now();
+  auto elapsed = std::chrono::duration_cast<milliseconds>(now - start0);
+  DEBUG("Done in {}ms", elapsed.count());
+  if (elapsed > ms) {
+    ERROR("TEST TIMEOUT");
+  }
 }

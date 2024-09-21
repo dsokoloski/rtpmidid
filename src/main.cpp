@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,17 +16,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <iostream>
-#include <random>
+#include "aseq.hpp"
+#include "control_socket.hpp"
+#include "factory.hpp"
+#include "hwautoannounce.hpp"
+#include "rtpmidid/exceptions.hpp"
+#include "rtpmidid/mdns_rtpmidi.hpp"
+#include "rtpmidid/poller.hpp"
+#include "rtpmidiremotehandler.hpp"
+#include "settings.hpp"
+#include <chrono>
 #include <signal.h>
 #include <unistd.h>
 
-#include "./config.hpp"
-#include "./control_socket.hpp"
-#include "./rtpmidid.hpp"
-#include <rtpmidid/logger.hpp>
-#include <rtpmidid/poller.hpp>
+namespace rtpmididns {
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::shared_ptr<::rtpmidid::mdns_rtpmidi_t> mdns;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+settings_t settings;
+void parse_argv(const std::vector<std::string> &argv);
+} // namespace rtpmididns
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static bool exiting = false;
 
 void sigterm_f(int) {
@@ -46,28 +57,60 @@ void sigint_f(int) {
   rtpmidid::poller.close();
 }
 
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char **argv) {
+  std::vector<std::string> args;
+  for (int i = 1; i < argc; i++) {
+    args.push_back(argv[i]);
+  }
+
+  rtpmididns::parse_argv(std::move(args));
+  std::optional<rtpmididns::HwAutoAnnounce> hwautoannounce;
 
   signal(SIGINT, sigint_f);
   signal(SIGTERM, sigterm_f);
 
-  INFO("Real Time Protocol Music Instrument Digital Interface Daemon - {}",
-       rtpmidid::VERSION);
-  INFO("(C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>");
-
-  auto options = rtpmidid::parse_cmd_args(argc - 1, (const char **)argv + 1);
-
   try {
-    auto rtpmidid = rtpmidid::rtpmidid_t(options);
-    auto control = rtpmidid::control_socket_t(rtpmidid, options.control);
+    auto aseq =
+        std::make_shared<rtpmididns::aseq_t>(rtpmididns::settings.alsa_name);
+    rtpmididns::mdns = std::make_unique<rtpmidid::mdns_rtpmidi_t>();
+    auto router = std::make_shared<rtpmididns::midirouter_t>();
+    rtpmididns::control_socket_t control;
+    control.router = router;
+    control.aseq = aseq;
+    control.mdns = rtpmididns::mdns;
+    rtpmididns::rtpmidi_remote_handler_t rtpmidi_remote_handler(router, aseq);
 
+    // Create all the alsa network midipeers
+    for (const auto &announce : rtpmididns::settings.alsa_announces) {
+      router->add_peer(
+          rtpmididns::make_local_alsa_multi_listener(announce.name, aseq));
+    }
+    // Create all the rtpmidi network midipeers
+    for (const auto &announce : rtpmididns::settings.rtpmidi_announces) {
+      router->add_peer(rtpmididns::make_network_rtpmidi_multi_listener(
+          announce.name, announce.port, aseq));
+    }
+    // Connect to all static endpoints
+    for (const auto &connect_to : rtpmididns::settings.connect_to) {
+      router->add_peer(rtpmididns::make_local_alsa_listener(
+          router, connect_to.name, connect_to.hostname, connect_to.port, aseq,
+          connect_to.local_udp_port));
+    }
+
+    hwautoannounce.emplace(aseq, router);
+
+    INFO("Waiting for connections.");
     while (rtpmidid::poller.is_open()) {
       rtpmidid::poller.wait();
     }
-  } catch (const std::exception &e) {
-    ERROR("{}", e.what());
-    return 1;
+  } catch (const std::exception &exc) {
+    ERROR("Unhandled exception: {}!", exc.what());
+  } catch (...) {
+    ERROR("Unhandled exception!");
   }
-  DEBUG("FIN");
+  rtpmididns::mdns = nullptr;
+
+  INFO("FIN");
   return 0;
 }

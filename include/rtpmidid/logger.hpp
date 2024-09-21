@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,6 +18,8 @@
  */
 
 #pragma once
+#include "utils.hpp"
+#include <array>
 #include <fmt/format.h>
 #include <time.h>
 
@@ -30,13 +32,18 @@
 #else
 #define DEBUG(...) false
 #endif
+// NOLINTNEXTLINE
 #define WARNING(...)                                                           \
   logger::log(__FILE__, __LINE__, logger::WARNING, __VA_ARGS__)
+// NOLINTNEXTLINE
 #define ERROR(...) logger::log(__FILE__, __LINE__, logger::ERROR, __VA_ARGS__)
+// NOLINTNEXTLINE
 #define INFO(...) logger::log(__FILE__, __LINE__, logger::INFO, __VA_ARGS__)
+// NOLINTNEXTLINE
 #define SUCCESS(...)                                                           \
   logger::log(__FILE__, __LINE__, logger::SUCCESS, __VA_ARGS__)
 
+// NOLINTNEXTLINE
 #define ERROR_ONCE(...)                                                        \
   {                                                                            \
     static bool __error_once_unseen_##__LINENO__ = true;                       \
@@ -45,6 +52,7 @@
       logger::log(__FILE__, __LINE__, logger::ERROR, __VA_ARGS__);             \
     }                                                                          \
   }
+// NOLINTNEXTLINE
 #define WARNING_ONCE(...)                                                      \
   {                                                                            \
     static bool __warning_once_unseen_##__LINENO__ = true;                     \
@@ -54,6 +62,7 @@
     }                                                                          \
   }
 // Will show only once every X seconds
+// NOLINTNEXTLINE
 #define WARNING_RATE_LIMIT(seconds, ...)                                       \
   {                                                                            \
     static int __warning_skip_until_##__LINENO__ = 0;                          \
@@ -67,7 +76,7 @@
 namespace logger {
 class logger;
 
-extern logger __logger;
+extern logger __logger; // NOLINT
 
 enum LogLevel {
   DEBUG,
@@ -79,6 +88,8 @@ enum LogLevel {
 
 class logger {
 private:
+  NON_COPYABLE_NOR_MOVABLE(logger);
+
   bool is_a_terminal;
 
 public:
@@ -86,24 +97,39 @@ public:
   ~logger();
 
   void log(const char *filename, int lineno, LogLevel loglevel,
-           const std::string &msg);
+           const char *msg);
   void flush();
 };
+
+constexpr int LOG_BUFFER_SIZE = 512;
 
 template <typename... Args>
 inline void log(const char *fullpath, int lineno, LogLevel loglevel,
                 Args... args) {
+  static std::array<char, LOG_BUFFER_SIZE> buffer;
 
   // Get ony the file name part, not full path. Assumes a / and ends in 0.
   const char *filename = fullpath;
   while (*filename)
-    ++filename;
+    ++filename; // NOLINT
   while (*filename != '/')
-    --filename;
-  ++filename;
+    --filename; // NOLINT
+  ++filename;   // NOLINT
 
-  auto str = fmt::format(args...);
-  __logger.log(filename, lineno, loglevel, str);
+  try {
+    auto n = fmt::format_to_n(buffer.data(), buffer.size(), args...);
+    *n.out = '\0';
+
+  } catch (const std::exception &e) {
+    auto message =
+        std::get<0>(std::forward_as_tuple(std::forward<Args>(args)...));
+    auto n = fmt::format_to_n(buffer.data(), buffer.size(),
+                              "Error formatting \"{}\" log message: {}",
+                              message, e.what());
+    *n.out = '\0';
+    loglevel = ERROR;
+  }
+  __logger.log(filename, lineno, loglevel, buffer.data());
 }
 
 inline void flush() { __logger.flush(); }

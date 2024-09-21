@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,9 +18,8 @@
  */
 
 #pragma once
-#include <cstring>
 #include <exception>
-#include <fmt/format.h>
+#include <fmt/core.h>
 #include <string>
 
 namespace rtpmidid {
@@ -28,25 +27,31 @@ class exception : public std::exception {
   std::string msg;
 
 public:
-  template <typename... Args> exception(Args... args) {
-    msg = fmt::format(args...);
-  }
-  const char *what() const noexcept { return msg.c_str(); }
+  template <typename... Args>
+  exception(Args... args) : msg(fmt::format(args...)) {}
+  const char *what() const noexcept override { return msg.c_str(); }
 };
 
 class not_implemented : public std::exception {
 public:
-  const char *what() const noexcept { return "Not Implemented"; }
+  const char *what() const noexcept override { return "Not Implemented"; }
 };
 class network_exception : public std::exception {
   std::string str;
+  int errno_ = 0;
 
 public:
-  int errno_;
-  network_exception(int errno_) {
-    this->errno_ = errno_;
-    this->str = fmt::format("Network error %s (%d)", strerror(errno_), errno_);
+  network_exception(int _errno) : errno_(_errno) {
+    str = fmt::format("Network error {} ({})", strerror(errno_), errno_);
   }
-  const char *what() const noexcept { return str.c_str(); }
+  const char *what() const noexcept override { return str.c_str(); }
+};
+
+class ini_exception : public exception {
+public:
+  template <typename... Args>
+  ini_exception(const std::string &filename, int lineno, Args... args)
+      : exception("Error parsing INI configuration at {}:{}: {}", filename,
+                  lineno, fmt::format(args...)) {}
 };
 } // namespace rtpmidid

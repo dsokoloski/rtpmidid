@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,10 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "./stringpp.hpp"
+#include "stringpp.hpp"
 
-std::vector<std::string> rtpmidid::split(std::string const &str,
-                                         const char delim) {
+namespace rtpmididns {
+
+std::vector<std::string> split(std::string const &str, const char delim) {
   std::vector<std::string> ret;
   size_t I;
   size_t endI = 0;
@@ -30,3 +31,4 @@ std::vector<std::string> rtpmidid::split(std::string const &str,
   }
   return ret;
 }
+} // namespace rtpmididns

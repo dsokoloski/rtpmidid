@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,28 +15,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 #pragma once
-#include <exception>
-#include <fmt/format.h>
-#include <string>
-#include <vector>
+#include "../third_party/nlohmann/json_fwd.hpp"
 
-namespace rtpmidid {
-extern const char *VERSION;
-
-/**
- * @short All rtpmidi options in a nice struct to pass around
- *
- * This allows easy read config and parse command line and generate the
- * rtpmidid object.
- */
-struct config_t {
-  std::string name;
-  std::vector<std::string> connect_to;
-  // Create clients at this ports to start with. Later will see.
-  std::vector<std::string> ports;
-  std::string host;
-  std::string control;
-};
-config_t parse_cmd_args(int argc, const char **argv);
-} // namespace rtpmidid
+namespace rtpmididns {
+using json_t = ::nlohmann::json;
+} // namespace rtpmididns

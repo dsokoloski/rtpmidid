@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 namespace logger {
+// NOLINTNEXLINE: A lot of rules are broken here, but I need it like this
 logger __logger;
 
 enum Color {
@@ -37,22 +38,32 @@ enum Color {
   WHITE = 37,
 };
 
-std::string color(const std::string_view &str, Color color,
-                  bool highlight = false) {
+// NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+
+const char *color(const char *str, Color color, bool highlight = false) {
   int hl = highlight ? 1 : 0;
-  return fmt::format("\033[{};{}m{}\033[0m", hl, color, str);
+  static char buffer[512];
+  auto n = fmt::format_to_n(buffer, sizeof(buffer), "\033[{};{}m{}\033[0m", hl,
+                            (int)color, str);
+  *n.out = '\0';
+  return buffer;
 }
-std::string color(const std::string_view &str, Color color, Color bgcolor,
+const char *color(const char *str, Color color, Color bgcolor,
                   bool highlight = false) {
   int hl = highlight ? 1 : 0;
-  return fmt::format("\033[{};{};{}m{}\033[0m", hl, color, bgcolor, str);
+  static char buffer[256];
+  auto n = fmt::format_to_n(buffer, sizeof(buffer), "\033[{};{};{}m{}\033[0m",
+                            hl, (int)color, (int)bgcolor, str);
+  *n.out = '\0';
+  return buffer;
 }
 
 logger::logger() { is_a_terminal = isatty(fileno(stdout)); }
 
 logger::~logger() {}
 void logger::log(const char *filename, int lineno, LogLevel loglevel,
-                 const std::string &msg) {
+                 const char *msg) {
+  static std::array<char, LOG_BUFFER_SIZE> buffer;
   if (is_a_terminal) {
     time_t now = time(nullptr);
     char timestamp[sizeof "2011-10-08T07:07:09Z"];
@@ -77,13 +88,23 @@ void logger::log(const char *filename, int lineno, LogLevel loglevel,
       break;
     }
 
-    fmt::print("{} {}\n",
-               color(fmt::format("[{}] [{}:{}]", timestamp, filename, lineno),
-                     my_color),
-               msg); // color("msg"), RED);
+    auto n = fmt::format_to_n(buffer.data(), buffer.size(), "[{}] [{}:{}]",
+                              timestamp, filename, lineno);
+    *n.out = '\0';
+    const char *colored_data = color(buffer.data(), my_color);
+    n = fmt::format_to_n(buffer.data(), buffer.size(), "{} {}\n", colored_data,
+                         msg);
+    *n.out = '\0';
   } else {
-    fmt::print("[{}:{}] {}\n", filename, lineno, msg);
+    auto n = fmt::format_to_n(buffer.data(), buffer.size(), " [{}:{}] {}\n",
+                              filename, lineno, msg);
+    *n.out = '\0';
   }
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+  ::fprintf(stderr, "%s", buffer.data());
 }
 void logger::flush() { ::fflush(stderr); }
+
+// NOLINTEND(cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+
 } // namespace logger

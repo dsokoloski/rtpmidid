@@ -1,6 +1,6 @@
 /**
  * Real Time Protocol Music Instrument Digital Interface Daemon
- * Copyright (C) 2019-2021 David Moreno Montero <dmoreno@coralbits.com>
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,7 +15,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 #pragma once
 
-#define UNUSED __attribute__((unused))
+#include "json_fwd.hpp"
+#include "rtpmidid/rtppeer.hpp"
+
+namespace rtpmididns {
+json_t peer_status(rtpmidid::rtppeer_t &peer);
+}; // namespace rtpmididns

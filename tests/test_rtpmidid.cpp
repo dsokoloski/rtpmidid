@@ -1,5 +1,23 @@
-#include <cstdint>
+/**
+ * Real Time Protocol Music Instrument Digital Interface Daemon
+ * Copyright (C) 2019-2023 David Moreno Montero <dmoreno@coralbits.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <chrono>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -12,11 +30,14 @@
 #include "rtpmidid/mdns_rtpmidi.hpp"
 #include "rtpmidid/poller.hpp"
 #include "rtpmidid/rtpclient.hpp"
+#include "rtpmidid/signal.hpp"
 #include "test_case.hpp"
 
 using namespace std::chrono_literals;
 
-std::vector<std::string> avahi_known_names;
+static std::vector<std::string> avahi_known_names;
+
+const auto AVAHI_ANNOUNCEMENT_TIMEOUT = 10'000;
 
 rtpmidid::config_t parse_cmd_args(std::vector<const char *> &&list) {
   return rtpmidid::parse_cmd_args(list.size(), list.data());
@@ -53,9 +74,9 @@ std::pair<uint8_t, uint8_t> alsa_find_port(rtpmidid::aseq &aseq,
                                            const std::string &gadgetname,
                                            const std::string &portname) {
 
-  snd_seq_client_info_t *cinfo;
-  snd_seq_port_info_t *pinfo;
-  int count;
+  snd_seq_client_info_t *cinfo = nullptr;
+  snd_seq_port_info_t *pinfo = nullptr;
+  int count = 0;
 
   snd_seq_client_info_alloca(&cinfo);
   snd_seq_port_info_alloca(&pinfo);
@@ -91,7 +112,7 @@ void wait_for_avahi_announcement(const std::string &name) {
     const auto wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - pre)
                              .count();
-    if (wait_ms > 10'000) {
+    if (wait_ms > AVAHI_ANNOUNCEMENT_TIMEOUT) {
       FAIL(fmt::format("Waiting too long for avahi: {}ms", wait_ms));
     }
   }
@@ -118,7 +139,7 @@ class metronome_t {
 public:
   rtpmidid::aseq aseq;
   rtpmidid::poller_t::timer_t timer;
-  uint8_t port;
+  uint8_t port = 0;
   bool paused = false;
   metronome_t(const std::string &gadgetname, const std::string &portname)
       : aseq("metronome") {
@@ -280,6 +301,9 @@ public:
 struct ServerAB {
   rtpmidid::rtpmidid_t A;
   rtpmidid::rtpmidid_t B;
+  connection_t<const std::string &, const std::string &, const std::string &>
+      discover_connection;
+  connection_t<const std::string &> remote_connection;
 
   ServerAB()
       : A(parse_cmd_args({"--port", "10000", "--name", "TEST-SERVER-A",
@@ -289,17 +313,18 @@ struct ServerAB {
     avahi_known_names.clear();
 
     // Keep list of known items by server A
-    A.mdns_rtpmidi.discover_event.connect([](const std::string &name,
-                                             const std::string &address,
-                                             const std::string &port) {
-      avahi_known_names.push_back(name);
-      DEBUG("Discover {}", name);
-    });
-    A.mdns_rtpmidi.remove_event.connect([](const std::string &name) {
-      avahi_known_names.erase(std::find(std::begin(avahi_known_names),
-                                        std::end(avahi_known_names), name));
-      DEBUG("Undiscover {}", name);
-    });
+    discover_connection = A.mdns_rtpmidi.discover_event.connect(
+        [](const std::string &name, const std::string &address,
+           const std::string &port) {
+          avahi_known_names.push_back(name);
+          DEBUG("Discover {}", name);
+        });
+    remote_connection =
+        A.mdns_rtpmidi.remove_event.connect([](const std::string &name) {
+          avahi_known_names.erase(std::find(std::begin(avahi_known_names),
+                                            std::end(avahi_known_names), name));
+          DEBUG("Undiscover {}", name);
+        });
 
     auto control_A = rtpmidid::control_socket_t(A, "/tmp/rtpmidid.testA.sock");
     auto control_B = rtpmidid::control_socket_t(B, "/tmp/rtpmidid.testB.sock");
@@ -367,10 +392,10 @@ void test_evil_disconnect() {
 
   // Now disconnect the control port of server-b / metronome-metro
   for (auto &peer : servers.B.known_clients) {
-    if (peer.second.peer) {
-      DEBUG("Peer: {} / control fd {}", peer.second.peer->peer.local_name,
-            peer.second.peer->control_socket);
-      close(peer.second.peer->midi_socket);
+    if (peer.peer) {
+      DEBUG("Peer: {} / control fd {}", peer.peer->peer.local_name,
+            peer.peer->control_socket);
+      close(peer.peer->midi_socket);
     }
   }
   loggera.wait();
